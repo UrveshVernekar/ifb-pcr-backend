@@ -1,0 +1,10 @@
+export enum Roles {
+  ADMIN = 'ADMIN',
+  MANAGER = 'MANAGER',
+  OPERATOR = 'OPERATOR',
+  QUALITY_INSPECTOR = 'QUALITY_INSPECTOR',
+  SAFETY_OFFICER = 'SAFETY_OFFICER',
+  EMPLOYEE = 'EMPLOYEE',
+}
+
+export default Roles;
