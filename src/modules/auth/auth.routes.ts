@@ -8,8 +8,10 @@ import {
   forgotPasswordSchema,
   verifyOtpSchema,
   changePasswordSchema,
+  updateUserSchema,
 } from './auth.validation';
-import { authenticate } from '../../common/middleware/auth.middleware';
+import { authenticate, authorize } from '../../common/middleware/auth.middleware';
+import { Roles } from '../../common/constants/roles';
 
 const router = Router();
 const controller = new AuthController();
@@ -26,5 +28,10 @@ router.post('/change-password', validate(changePasswordSchema), controller.chang
 // Protected Routes
 router.post('/logout', authenticate, controller.logout);
 router.get('/me', authenticate, controller.me);
+
+// Admin-only User Management Routes
+router.get('/users', authenticate, authorize([Roles.ADMIN]), controller.getUsers);
+router.put('/users/:id', authenticate, authorize([Roles.ADMIN]), validate(updateUserSchema), controller.updateUser);
+router.delete('/users/:id', authenticate, authorize([Roles.ADMIN]), controller.deleteUser);
 
 export default router;

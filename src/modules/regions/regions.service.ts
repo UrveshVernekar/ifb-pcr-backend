@@ -9,14 +9,37 @@ export class RegionsService {
     this.regionsRepository = new RegionsRepository();
   }
 
-  async getAllRegions(): Promise<any[]> {
+  async getAllRegions(user?: any): Promise<any[]> {
+    if (user && user.role !== 'ADMIN') {
+      const options = {
+        regionId: user.role === 'REGION_HEAD' ? user.regionId : undefined,
+        branchId: user.role === 'BRANCH_HEAD' ? user.branchId : undefined,
+        franchiseId: user.role === 'FRANCHISE_HEAD' ? user.franchiseId : undefined,
+      };
+      return this.regionsRepository.findAll(options);
+    }
     return this.regionsRepository.findAll();
   }
 
-  async getRegionById(id: number): Promise<IRegion> {
+  async getRegionById(id: number, user?: any): Promise<IRegion> {
     const region = await this.regionsRepository.findById(id);
     if (!region) {
       throw ApiError.notFound('Region not found');
+    }
+    if (user && user.role !== 'ADMIN') {
+      if (user.role === 'REGION_HEAD' && region.region_id !== user.regionId) {
+        throw new ApiError(403, 'Forbidden: You do not have access to this region');
+      }
+      if (user.role === 'BRANCH_HEAD') {
+        const allowedRegions = await this.regionsRepository.findAll({ branchId: user.branchId });
+        const isAllowed = allowedRegions.some((r) => r.region_id === region.region_id);
+        if (!isAllowed) throw new ApiError(403, 'Forbidden: You do not have access to this region');
+      }
+      if (user.role === 'FRANCHISE_HEAD') {
+        const allowedRegions = await this.regionsRepository.findAll({ franchiseId: user.franchiseId });
+        const isAllowed = allowedRegions.some((r) => r.region_id === region.region_id);
+        if (!isAllowed) throw new ApiError(403, 'Forbidden: You do not have access to this region');
+      }
     }
     return region;
   }

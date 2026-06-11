@@ -2,7 +2,7 @@ import db from '../../config/database';
 import { IFranchise } from './franchises.types';
 
 export class FranchisesRepository {
-  async findAll(branchId?: number): Promise<any[]> {
+  async findAll(branchId?: number, options?: { regionId?: number | null; branchId?: number | null; franchiseId?: number | null }): Promise<any[]> {
     const query = db('franchises')
       .leftJoin('branches', 'franchises.branch_id', 'branches.branch_id')
       .leftJoin('regions', 'branches.region_id', 'regions.region_id')
@@ -15,6 +15,16 @@ export class FranchisesRepository {
 
     if (branchId) {
       query.andWhere('franchises.branch_id', branchId);
+    }
+
+    if (options?.regionId) {
+      query.andWhere('branches.region_id', options.regionId);
+    }
+    if (options?.branchId) {
+      query.andWhere('franchises.branch_id', options.branchId);
+    }
+    if (options?.franchiseId) {
+      query.andWhere('franchises.franchise_id', options.franchiseId);
     }
 
     return query;

@@ -125,6 +125,9 @@ export class AuthController {
         email: employee.email,
         role: employee.role,
         permissions: employee.permissions,
+        region_id: employee.region_id,
+        branch_id: employee.branch_id,
+        franchise_id: employee.franchise_id,
       });
     } catch (error) {
       return next(error);
@@ -166,6 +169,38 @@ export class AuthController {
     try {
       const result = await this.authService.changePassword(req.body);
       return successResponse(res, result.message);
+    } catch (error) {
+      return next(error);
+    }
+  };
+
+  // Get All Users (Admin only)
+  getUsers = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const users = await this.authService.getUsers();
+      return successResponse(res, 'Users fetched successfully', users);
+    } catch (error) {
+      return next(error);
+    }
+  };
+
+  // Update User (Admin only)
+  updateUser = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { id } = req.params;
+      const updatedUser = await this.authService.updateUser(Number(id), req.body);
+      return successResponse(res, 'User updated successfully', updatedUser);
+    } catch (error) {
+      return next(error);
+    }
+  };
+
+  // Delete User (Admin only)
+  deleteUser = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { id } = req.params;
+      await this.authService.deleteUser(Number(id));
+      return successResponse(res, 'User deleted successfully');
     } catch (error) {
       return next(error);
     }

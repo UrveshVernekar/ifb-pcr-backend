@@ -9,6 +9,9 @@ export const registerSchema = z.object({
     password: z.string().min(6, 'Password must be at least 6 characters').max(1000),
     role: z.nativeEnum(Roles).default(Roles.EMPLOYEE),
     permissions: z.array(z.string()).optional(),
+    region_id: z.number().optional().nullable(),
+    branch_id: z.number().optional().nullable(),
+    franchise_id: z.number().optional().nullable(),
   }),
 });
 
@@ -46,5 +49,19 @@ export const changePasswordSchema = z.object({
     id: z.string().min(1, 'Employee ID/Code is required'),
     newPassword: z.string().min(1, 'New password is required'),
     company: z.string().min(1, 'Company is required'),
+  }),
+});
+
+export const updateUserSchema = z.object({
+  body: z.object({
+    employee_id: z.string().max(50).optional().nullable(),
+    name: z.string().min(2, 'Name must be at least 2 characters').max(100),
+    email: z.string().email('Invalid email address').max(150),
+    role: z.nativeEnum(Roles),
+    region_id: z.number().optional().nullable(),
+    branch_id: z.number().optional().nullable(),
+    franchise_id: z.number().optional().nullable(),
+    is_active: z.boolean().optional(),
+    password: z.string().min(6, 'Password must be at least 6 characters').max(1000).optional().nullable(),
   }),
 });
