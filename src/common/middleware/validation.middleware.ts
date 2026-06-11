@@ -31,7 +31,7 @@ export const validate = (schema: z.ZodTypeAny) => {
       return next();
     } catch (error) {
       if (error instanceof z.ZodError) {
-        const formattedErrors = (error as any).errors.map((err: any) => ({
+        const formattedErrors = error.issues.map((err: any) => ({
           field: err.path.slice(1).join('.'), // Remove 'body', 'query', or 'params' prefix
           message: err.message,
         }));

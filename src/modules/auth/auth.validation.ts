@@ -6,7 +6,7 @@ export const registerSchema = z.object({
     employee_id: z.string().max(50).optional(),
     name: z.string().min(2, 'Name must be at least 2 characters').max(100),
     email: z.string().email('Invalid email address').max(150),
-    password: z.string().min(6, 'Password must be at least 6 characters').max(100),
+    password: z.string().min(6, 'Password must be at least 6 characters').max(1000),
     role: z.nativeEnum(Roles).default(Roles.EMPLOYEE),
     permissions: z.array(z.string()).optional(),
   }),
