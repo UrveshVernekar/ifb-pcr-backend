@@ -64,3 +64,32 @@ export const authorize = (
     return next();
   };
 };
+
+export const optionalAuthenticate = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return next();
+    }
+
+    const token = authHeader.split(' ')[1];
+    if (!token) {
+      return next();
+    }
+
+    const isBlacklisted = await redisClient.exists(`blacklist:${token}`);
+    if (isBlacklisted) {
+      return next();
+    }
+
+    const payload = verifyAccessToken(token);
+    req.user = payload;
+    return next();
+  } catch (error) {
+    return next();
+  }
+};
