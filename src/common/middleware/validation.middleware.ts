@@ -10,23 +10,27 @@ export const validate = (schema: z.ZodTypeAny) => {
         query: req.query,
         params: req.params,
       }) as any;
-      // Replace req with parsed inputs for strict typing if desired,
-      // but keeping standard assignment ensures properties are available.
-      req.body = parsed.body;
+      if (parsed.body !== undefined) {
+        req.body = parsed.body;
+      }
       
-      Object.defineProperty(req, 'query', {
-        value: parsed.query,
-        writable: true,
-        configurable: true,
-        enumerable: true
-      });
+      if (parsed.query !== undefined) {
+        Object.defineProperty(req, 'query', {
+          value: parsed.query,
+          writable: true,
+          configurable: true,
+          enumerable: true
+        });
+      }
       
-      Object.defineProperty(req, 'params', {
-        value: parsed.params,
-        writable: true,
-        configurable: true,
-        enumerable: true
-      });
+      if (parsed.params !== undefined) {
+        Object.defineProperty(req, 'params', {
+          value: parsed.params,
+          writable: true,
+          configurable: true,
+          enumerable: true
+        });
+      }
       
       return next();
     } catch (error) {
