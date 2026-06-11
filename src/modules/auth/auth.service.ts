@@ -22,8 +22,11 @@ export class AuthService {
       throw ApiError.conflict('Email is already registered');
     }
 
+    const decryptedPassword = decryptPassword(dto.password);
+    const passwordToHash = decryptedPassword || dto.password;
+
     const salt = await bcrypt.genSalt(10);
-    const passwordHash = await bcrypt.hash(dto.password, salt);
+    const passwordHash = await bcrypt.hash(passwordToHash, salt);
 
     const employee = await this.authRepository.create({
       employee_id: dto.employee_id || null,
@@ -55,7 +58,10 @@ export class AuthService {
       throw new ApiError(403, 'Your account has been deactivated');
     }
 
-    const isMatch = await bcrypt.compare(dto.password, employee.password_hash);
+    const decryptedPassword = decryptPassword(dto.password);
+    const passwordToCompare = decryptedPassword || dto.password;
+
+    const isMatch = await bcrypt.compare(passwordToCompare, employee.password_hash);
     if (!isMatch) {
       throw ApiError.badRequest('Invalid email or password');
     }
