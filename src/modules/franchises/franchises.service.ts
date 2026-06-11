@@ -12,23 +12,59 @@ export class FranchisesService {
     this.branchesRepository = new BranchesRepository();
   }
 
-  async getAllFranchises(branchId?: number): Promise<any[]> {
+  async getAllFranchises(branchId?: number, user?: any): Promise<any[]> {
+    if (user && user.role !== 'ADMIN') {
+      const options = {
+        regionId: user.role === 'REGION_HEAD' ? user.regionId : undefined,
+        branchId: user.role === 'BRANCH_HEAD' ? user.branchId : undefined,
+        franchiseId: user.role === 'FRANCHISE_HEAD' ? user.franchiseId : undefined,
+      };
+      return this.franchisesRepository.findAll(branchId, options);
+    }
     return this.franchisesRepository.findAll(branchId);
   }
 
-  async getFranchiseById(id: number): Promise<IFranchise> {
+  async getFranchiseById(id: number, user?: any): Promise<IFranchise> {
     const franchise = await this.franchisesRepository.findById(id);
     if (!franchise) {
       throw ApiError.notFound('Franchise not found');
     }
+    if (user && user.role !== 'ADMIN') {
+      if (user.role === 'BRANCH_HEAD' && franchise.branch_id !== user.branchId) {
+        throw new ApiError(403, 'Forbidden: You do not have access to this franchise');
+      }
+      if (user.role === 'FRANCHISE_HEAD' && franchise.franchise_id !== user.franchiseId) {
+        throw new ApiError(403, 'Forbidden: You do not have access to this franchise');
+      }
+      if (user.role === 'REGION_HEAD') {
+        const allowedFranchises = await this.franchisesRepository.findAll(undefined, { regionId: user.regionId });
+        const isAllowed = allowedFranchises.some((f) => f.franchise_id === franchise.franchise_id);
+        if (!isAllowed) throw new ApiError(403, 'Forbidden: You do not have access to this franchise');
+      }
+    }
     return franchise;
   }
 
-  async createFranchise(data: Partial<IFranchise>, userId: number): Promise<IFranchise> {
+  async createFranchise(data: Partial<IFranchise>, userId: number, user?: any): Promise<IFranchise> {
+    // If branch head, force branch_id to their assigned branch
+    if (user && user.role === 'BRANCH_HEAD') {
+      data.branch_id = user.branchId;
+    }
+
     // 1. Verify branch exists
     const branch = await this.branchesRepository.findById(data.branch_id!);
     if (!branch) {
       throw ApiError.badRequest('Invalid branch ID: Branch does not exist');
+    }
+
+    // Verify regional access
+    if (user && user.role === 'REGION_HEAD' && branch.region_id !== user.regionId) {
+      throw new ApiError(403, 'Forbidden: You cannot create a franchise in a branch outside your region');
+    }
+
+    // Verify branch head access
+    if (user && user.role === 'BRANCH_HEAD' && data.branch_id !== user.branchId) {
+      throw new ApiError(403, 'Forbidden: You cannot create a franchise in another branch');
     }
 
     // 2. Verify code uniqueness
@@ -46,14 +82,20 @@ export class FranchisesService {
     return this.franchisesRepository.create(payload);
   }
 
-  async updateFranchise(id: number, data: Partial<IFranchise>, userId: number): Promise<IFranchise> {
-    await this.getFranchiseById(id);
+  async updateFranchise(id: number, data: Partial<IFranchise>, userId: number, user?: any): Promise<IFranchise> {
+    await this.getFranchiseById(id, user);
 
     // 1. Verify branch if updated
     if (data.branch_id) {
+      if (user && user.role === 'BRANCH_HEAD' && data.branch_id !== user.branchId) {
+        throw new ApiError(403, 'Forbidden: You cannot change franchise branch');
+      }
       const branch = await this.branchesRepository.findById(data.branch_id);
       if (!branch) {
         throw ApiError.badRequest('Invalid branch ID: Branch does not exist');
+      }
+      if (user && user.role === 'REGION_HEAD' && branch.region_id !== user.regionId) {
+        throw new ApiError(403, 'Forbidden: You cannot move a franchise to a branch outside your region');
       }
     }
 
@@ -73,8 +115,8 @@ export class FranchisesService {
     return this.franchisesRepository.update(id, payload);
   }
 
-  async deleteFranchise(id: number, userId: number): Promise<void> {
-    await this.getFranchiseById(id);
+  async deleteFranchise(id: number, userId: number, user?: any): Promise<void> {
+    await this.getFranchiseById(id, user);
     await this.franchisesRepository.softDelete(id, userId);
   }
 }

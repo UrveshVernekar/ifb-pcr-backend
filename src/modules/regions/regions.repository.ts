@@ -2,11 +2,35 @@ import db from '../../config/database';
 import { IRegion } from './regions.types';
 
 export class RegionsRepository {
-  async findAll(): Promise<any[]> {
-    return db('regions')
+  async findAll(options?: { regionId?: number | null; branchId?: number | null; franchiseId?: number | null }): Promise<any[]> {
+    const query = db('regions')
       .leftJoin('nations', 'regions.nation_id', 'nations.nation_id')
       .select('regions.*', 'nations.name as nation_name')
       .whereNull('regions.deleted_at');
+
+    if (options?.regionId) {
+      query.where('regions.region_id', options.regionId);
+    } else if (options?.branchId) {
+      query.whereExists(
+        db('branches')
+          .select(1)
+          .whereRaw('branches.region_id = regions.region_id')
+          .andWhere('branches.branch_id', options.branchId)
+          .whereNull('branches.deleted_at')
+      );
+    } else if (options?.franchiseId) {
+      query.whereExists(
+        db('franchises')
+          .join('branches', 'franchises.branch_id', 'branches.branch_id')
+          .select(1)
+          .whereRaw('branches.region_id = regions.region_id')
+          .andWhere('franchises.franchise_id', options.franchiseId)
+          .whereNull('branches.deleted_at')
+          .whereNull('franchises.deleted_at')
+      );
+    }
+
+    return query;
   }
 
   async findById(id: number): Promise<IRegion | null> {

@@ -15,9 +15,9 @@ router.use(authenticate);
 router.get('/', controller.getBranches);
 router.get('/:id', controller.getBranchById);
 
-// Admin-only write endpoints
-router.post('/', authorize([Roles.ADMIN]), validate(createBranchSchema), controller.createBranch);
-router.put('/:id', authorize([Roles.ADMIN]), validate(updateBranchSchema), controller.updateBranch);
-router.delete('/:id', authorize([Roles.ADMIN]), controller.deleteBranch);
+// Admin and Regional Head write endpoints
+router.post('/', authorize([Roles.ADMIN, Roles.REGION_HEAD]), validate(createBranchSchema), controller.createBranch);
+router.put('/:id', authorize([Roles.ADMIN, Roles.REGION_HEAD]), validate(updateBranchSchema), controller.updateBranch);
+router.delete('/:id', authorize([Roles.ADMIN, Roles.REGION_HEAD]), controller.deleteBranch);
 
 export default router;

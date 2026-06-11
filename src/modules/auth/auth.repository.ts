@@ -30,6 +30,9 @@ export class AuthRepository {
       refresh_token_expires_at: row.refresh_token_expires_at,
       is_active: Boolean(row.is_active),
       last_login_at: row.last_login_at,
+      region_id: row.region_id,
+      branch_id: row.branch_id,
+      franchise_id: row.franchise_id,
       created_at: row.created_at,
       updated_at: row.updated_at,
     };
@@ -45,6 +48,9 @@ export class AuthRepository {
     if (employee.refresh_token !== undefined) data.refresh_token = employee.refresh_token;
     if (employee.refresh_token_expires_at !== undefined) data.refresh_token_expires_at = employee.refresh_token_expires_at;
     if (employee.last_login_at !== undefined) data.last_login_at = employee.last_login_at;
+    if (employee.region_id !== undefined) data.region_id = employee.region_id;
+    if (employee.branch_id !== undefined) data.branch_id = employee.branch_id;
+    if (employee.franchise_id !== undefined) data.franchise_id = employee.franchise_id;
     if (employee.is_active !== undefined) {
       data.is_active = employee.is_active ? 1 : 0;
     }
@@ -174,6 +180,61 @@ export class AuthRepository {
 
   async deleteOtpRecord(email: string): Promise<void> {
     await db('otp_store').where({ email }).delete();
+  }
+
+  async findAll(): Promise<any[]> {
+    const rows = await db('users')
+      .leftJoin('roles', 'users.role_id', 'roles.role_id')
+      .leftJoin('regions', 'users.region_id', 'regions.region_id')
+      .leftJoin('branches', 'users.branch_id', 'branches.branch_id')
+      .leftJoin('franchises', 'users.franchise_id', 'franchises.franchise_id')
+      .select(
+        'users.*',
+        'roles.role_code',
+        'regions.name as region_name',
+        'branches.name as branch_name',
+        'franchises.name as franchise_name'
+      )
+      .orderBy('users.user_id', 'desc');
+
+    return rows.map(row => {
+      const employee = this.mapFromDb(row);
+      if (!employee) return null;
+      return {
+        ...employee,
+        region_name: row.region_name || null,
+        branch_name: row.branch_name || null,
+        franchise_name: row.franchise_name || null,
+      };
+    }).filter(Boolean) as any[];
+  }
+
+  async update(id: number, employeeData: Partial<IEmployee>): Promise<IEmployee | null> {
+    const dbData = this.mapToDb(employeeData);
+    
+    if (employeeData.role) {
+      const roleRow = await db('roles').where({ role_code: employeeData.role }).first();
+      dbData.role_id = roleRow ? roleRow.role_id : 1;
+    }
+
+    await db('users')
+      .where({ user_id: id })
+      .update({
+        ...dbData,
+        updated_at: db.fn.now(),
+      });
+
+    const updatedRow = await db('users')
+      .leftJoin('roles', 'users.role_id', 'roles.role_id')
+      .select('users.*', 'roles.role_code')
+      .where({ 'users.user_id': id })
+      .first();
+
+    return this.mapFromDb(updatedRow);
+  }
+
+  async delete(id: number): Promise<void> {
+    await db('users').where({ user_id: id }).delete();
   }
 }
 

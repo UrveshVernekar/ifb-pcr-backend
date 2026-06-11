@@ -3,9 +3,12 @@ import { env } from '../../config/env';
 import { ApiError } from '../errors/ApiError';
 
 export interface ITokenPayload {
-  userId: string | number;
+  userId: number;
   role: string;
   permissions?: string[];
+  regionId?: number | null;
+  branchId?: number | null;
+  franchiseId?: number | null;
 }
 
 export const signAccessToken = (payload: ITokenPayload): string => {

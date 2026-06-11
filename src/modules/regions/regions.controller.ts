@@ -11,7 +11,7 @@ export class RegionsController {
 
   getRegions = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const result = await this.regionsService.getAllRegions();
+      const result = await this.regionsService.getAllRegions(req.user);
       return successResponse(res, 'Regions fetched successfully', result);
     } catch (error) {
       return next(error);
@@ -21,7 +21,7 @@ export class RegionsController {
   getRegionById = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const id = parseInt(req.params.id as string, 10);
-      const result = await this.regionsService.getRegionById(id);
+      const result = await this.regionsService.getRegionById(id, req.user);
       return successResponse(res, 'Region fetched successfully', result);
     } catch (error) {
       return next(error);

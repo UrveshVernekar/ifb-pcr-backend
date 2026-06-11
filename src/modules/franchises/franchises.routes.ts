@@ -15,9 +15,9 @@ router.use(authenticate);
 router.get('/', controller.getFranchises);
 router.get('/:id', controller.getFranchiseById);
 
-// Admin-only write endpoints
-router.post('/', authorize([Roles.ADMIN]), validate(createFranchiseSchema), controller.createFranchise);
-router.put('/:id', authorize([Roles.ADMIN]), validate(updateFranchiseSchema), controller.updateFranchise);
-router.delete('/:id', authorize([Roles.ADMIN]), controller.deleteFranchise);
+// Admin, Regional Head, and Branch Head write endpoints
+router.post('/', authorize([Roles.ADMIN, Roles.REGION_HEAD, Roles.BRANCH_HEAD]), validate(createFranchiseSchema), controller.createFranchise);
+router.put('/:id', authorize([Roles.ADMIN, Roles.REGION_HEAD, Roles.BRANCH_HEAD]), validate(updateFranchiseSchema), controller.updateFranchise);
+router.delete('/:id', authorize([Roles.ADMIN, Roles.REGION_HEAD, Roles.BRANCH_HEAD]), controller.deleteFranchise);
 
 export default router;

@@ -36,6 +36,9 @@ export class AuthService {
       role: dto.role,
       permissions: dto.permissions || [],
       is_active: true,
+      region_id: dto.region_id || null,
+      branch_id: dto.branch_id || null,
+      franchise_id: dto.franchise_id || null,
     });
 
     return this.generateAuthResponse(employee);
@@ -100,6 +103,9 @@ export class AuthService {
       userId: employee.id,
       role: employee.role,
       permissions: Array.isArray(employee.permissions) ? employee.permissions : [],
+      regionId: employee.region_id || null,
+      branchId: employee.branch_id || null,
+      franchiseId: employee.franchise_id || null,
     };
 
     const newAccessToken = signAccessToken(tokenPayload);
@@ -138,6 +144,9 @@ export class AuthService {
       userId: employee.id,
       role: employee.role,
       permissions,
+      regionId: employee.region_id || null,
+      branchId: employee.branch_id || null,
+      franchiseId: employee.franchise_id || null,
     };
 
     const accessToken = signAccessToken(tokenPayload);
@@ -160,6 +169,9 @@ export class AuthService {
         email: employee.email,
         role: employee.role,
         permissions,
+        region_id: employee.region_id || null,
+        branch_id: employee.branch_id || null,
+        franchise_id: employee.franchise_id || null,
       },
     };
   }
@@ -279,6 +291,49 @@ export class AuthService {
       success: true,
       message: 'Password updated successfully',
     };
+  }
+
+  async getUsers(): Promise<any[]> {
+    return this.authRepository.findAll();
+  }
+
+  async updateUser(id: number, data: any): Promise<IEmployee | null> {
+    const existing = await this.authRepository.findById(id);
+    if (!existing) {
+      throw ApiError.notFound('User not found');
+    }
+
+    const updateData: any = {
+      name: data.name,
+      email: data.email,
+      role: data.role,
+      employee_id: data.employee_id || null,
+      region_id: data.role === 'REGION_HEAD' ? data.region_id : null,
+      branch_id: data.role === 'BRANCH_HEAD' ? data.branch_id : null,
+      franchise_id: data.role === 'FRANCHISE_HEAD' ? data.franchise_id : null,
+    };
+
+    if (data.is_active !== undefined) {
+      updateData.is_active = data.is_active;
+    }
+
+    if (data.password) {
+      const decryptedPassword = decryptPassword(data.password);
+      const passwordToHash = decryptedPassword || data.password;
+
+      const salt = await bcrypt.genSalt(10);
+      updateData.password_hash = await bcrypt.hash(passwordToHash, salt);
+    }
+
+    return this.authRepository.update(id, updateData);
+  }
+
+  async deleteUser(id: number): Promise<void> {
+    const existing = await this.authRepository.findById(id);
+    if (!existing) {
+      throw ApiError.notFound('User not found');
+    }
+    await this.authRepository.delete(id);
   }
 }
 
