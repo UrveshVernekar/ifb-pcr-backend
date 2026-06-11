@@ -182,8 +182,8 @@ export class AuthRepository {
     await db('otp_store').where({ email }).delete();
   }
 
-  async findAll(): Promise<any[]> {
-    const rows = await db('users')
+  async findAll(filters?: { regionId?: number; branchId?: number }): Promise<any[]> {
+    let query = db('users')
       .leftJoin('roles', 'users.role_id', 'roles.role_id')
       .leftJoin('regions', 'users.region_id', 'regions.region_id')
       .leftJoin('branches', 'users.branch_id', 'branches.branch_id')
@@ -194,8 +194,30 @@ export class AuthRepository {
         'regions.name as region_name',
         'branches.name as branch_name',
         'franchises.name as franchise_name'
-      )
-      .orderBy('users.user_id', 'desc');
+      );
+
+    if (filters?.branchId) {
+      query = query.where(function() {
+        this.where('users.branch_id', filters.branchId)
+            .orWhereIn('users.franchise_id', function() {
+              this.select('franchise_id').from('franchises').where('branch_id', filters.branchId);
+            });
+      });
+    } else if (filters?.regionId) {
+      query = query.where(function() {
+        this.where('users.region_id', filters.regionId)
+            .orWhereIn('users.branch_id', function() {
+              this.select('branch_id').from('branches').where('region_id', filters.regionId);
+            })
+            .orWhereIn('users.franchise_id', function() {
+              this.select('franchise_id').from('franchises').whereIn('branch_id', function() {
+                this.select('branch_id').from('branches').where('region_id', filters.regionId);
+              });
+            });
+      });
+    }
+
+    const rows = await query.orderBy('users.user_id', 'desc');
 
     return rows.map(row => {
       const employee = this.mapFromDb(row);

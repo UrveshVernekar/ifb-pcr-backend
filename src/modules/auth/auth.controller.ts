@@ -16,7 +16,7 @@ export class AuthController {
   // Register Controller
   register = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const result = await this.authService.register(req.body);
+      const result = await this.authService.register(req.body, req.user);
       
       // Set refresh token in HTTP-only cookie
       res.cookie('refreshToken', result.refreshToken, {
@@ -177,7 +177,7 @@ export class AuthController {
   // Get All Users (Admin only)
   getUsers = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const users = await this.authService.getUsers();
+      const users = await this.authService.getUsers(req.user);
       return successResponse(res, 'Users fetched successfully', users);
     } catch (error) {
       return next(error);
@@ -188,7 +188,7 @@ export class AuthController {
   updateUser = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { id } = req.params;
-      const updatedUser = await this.authService.updateUser(Number(id), req.body);
+      const updatedUser = await this.authService.updateUser(Number(id), req.body, req.user);
       return successResponse(res, 'User updated successfully', updatedUser);
     } catch (error) {
       return next(error);
@@ -199,7 +199,7 @@ export class AuthController {
   deleteUser = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { id } = req.params;
-      await this.authService.deleteUser(Number(id));
+      await this.authService.deleteUser(Number(id), req.user);
       return successResponse(res, 'User deleted successfully');
     } catch (error) {
       return next(error);

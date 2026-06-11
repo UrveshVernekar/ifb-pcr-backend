@@ -8,6 +8,7 @@ import redisClient from '../../config/redis';
 import { verifyAltchaSolution, generateAltchaChallenge } from '../../common/utils/altcha.util';
 import { decryptPassword } from '../../common/utils/crypto.util';
 import { sendOtpMail, sendPasswordChangedMail } from '../../common/utils/mailer.util';
+import db from '../../config/database';
 
 export class AuthService {
   private authRepository: AuthRepository;
@@ -16,10 +17,60 @@ export class AuthService {
     this.authRepository = new AuthRepository();
   }
 
-  async register(dto: RegisterDto): Promise<IAuthResponse> {
+  async register(dto: RegisterDto, currentUser?: any): Promise<IAuthResponse> {
     const existing = await this.authRepository.findByEmail(dto.email);
     if (existing) {
       throw ApiError.conflict('Email is already registered');
+    }
+
+    // Role-based validation if initiated by a logged in user
+    if (currentUser) {
+      if (currentUser.role === 'REGION_HEAD') {
+        if (['ADMIN', 'REGION_HEAD'].includes(dto.role)) {
+          throw new ApiError(403, 'Forbidden: Cannot create ADMIN or REGION_HEAD users');
+        }
+        if (dto.role === 'BRANCH_HEAD') {
+          if (!dto.branch_id) {
+            throw ApiError.badRequest('Branch assignment is required for Branch Head');
+          }
+          const branch = await db('branches').where({ branch_id: dto.branch_id }).first();
+          if (!branch || branch.region_id !== currentUser.regionId) {
+            throw new ApiError(403, 'Forbidden: Assigned branch is outside your region');
+          }
+        }
+        if (dto.role === 'FRANCHISE_HEAD') {
+          if (!dto.franchise_id) {
+            throw ApiError.badRequest('Franchise assignment is required for Franchise Head');
+          }
+          const franchise = await db('franchises').where({ franchise_id: dto.franchise_id }).first();
+          if (franchise) {
+            const branch = await db('branches').where({ branch_id: franchise.branch_id }).first();
+            if (!branch || branch.region_id !== currentUser.regionId) {
+              throw new ApiError(403, 'Forbidden: Assigned franchise is outside your region');
+            }
+          } else {
+            throw ApiError.notFound('Assigned franchise not found');
+          }
+        }
+      } else if (currentUser.role === 'BRANCH_HEAD') {
+        if (['ADMIN', 'REGION_HEAD', 'BRANCH_HEAD'].includes(dto.role)) {
+          throw new ApiError(403, 'Forbidden: Cannot create ADMIN, REGION_HEAD, or BRANCH_HEAD users');
+        }
+        if (dto.role === 'FRANCHISE_HEAD') {
+          if (!dto.franchise_id) {
+            throw ApiError.badRequest('Franchise assignment is required for Franchise Head');
+          }
+          const franchise = await db('franchises').where({ franchise_id: dto.franchise_id }).first();
+          if (!franchise || franchise.branch_id !== currentUser.branchId) {
+            throw new ApiError(403, 'Forbidden: Assigned franchise is outside your branch');
+          }
+        }
+      }
+    } else {
+      // Public registration: force role to EMPLOYEE or USER to prevent privilege escalation
+      if (dto.role && !['EMPLOYEE', 'USER'].includes(dto.role)) {
+        throw new ApiError(403, 'Forbidden: Public registration is restricted to Employee or User roles');
+      }
     }
 
     const decryptedPassword = decryptPassword(dto.password);
@@ -36,9 +87,9 @@ export class AuthService {
       role: dto.role,
       permissions: dto.permissions || [],
       is_active: true,
-      region_id: dto.region_id || null,
-      branch_id: dto.branch_id || null,
-      franchise_id: dto.franchise_id || null,
+      region_id: dto.role === 'REGION_HEAD' ? (dto.region_id || null) : null,
+      branch_id: dto.role === 'BRANCH_HEAD' ? (dto.branch_id || null) : null,
+      franchise_id: dto.role === 'FRANCHISE_HEAD' ? (dto.franchise_id || null) : null,
     });
 
     return this.generateAuthResponse(employee);
@@ -293,14 +344,106 @@ export class AuthService {
     };
   }
 
-  async getUsers(): Promise<any[]> {
-    return this.authRepository.findAll();
+  private async isUserInScope(currentUser: any, targetUser: any): Promise<boolean> {
+    if (currentUser.role === 'ADMIN') {
+      return true;
+    }
+
+    if (currentUser.role === 'REGION_HEAD') {
+      if (targetUser.role === 'ADMIN' || targetUser.role === 'REGION_HEAD') {
+        return false;
+      }
+      if (targetUser.region_id && targetUser.region_id === currentUser.regionId) {
+        return true;
+      }
+      if (targetUser.branch_id) {
+        const branch = await db('branches').where({ branch_id: targetUser.branch_id }).first();
+        if (branch && branch.region_id === currentUser.regionId) {
+          return true;
+        }
+      }
+      if (targetUser.franchise_id) {
+        const franchise = await db('franchises').where({ franchise_id: targetUser.franchise_id }).first();
+        if (franchise) {
+          const branch = await db('branches').where({ branch_id: franchise.branch_id }).first();
+          if (branch && branch.region_id === currentUser.regionId) {
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    if (currentUser.role === 'BRANCH_HEAD') {
+      if (['ADMIN', 'REGION_HEAD', 'BRANCH_HEAD'].includes(targetUser.role)) {
+        return false;
+      }
+      if (targetUser.branch_id && targetUser.branch_id === currentUser.branchId) {
+        return true;
+      }
+      if (targetUser.franchise_id) {
+        const franchise = await db('franchises').where({ franchise_id: targetUser.franchise_id }).first();
+        if (franchise && franchise.branch_id === currentUser.branchId) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    return false;
   }
 
-  async updateUser(id: number, data: any): Promise<IEmployee | null> {
+  async getUsers(currentUser: any): Promise<any[]> {
+    if (currentUser.role === 'ADMIN') {
+      return this.authRepository.findAll();
+    } else if (currentUser.role === 'REGION_HEAD') {
+      return this.authRepository.findAll({ regionId: currentUser.regionId });
+    } else if (currentUser.role === 'BRANCH_HEAD') {
+      return this.authRepository.findAll({ branchId: currentUser.branchId });
+    }
+    return [];
+  }
+
+  async updateUser(id: number, data: any, currentUser: any): Promise<IEmployee | null> {
     const existing = await this.authRepository.findById(id);
     if (!existing) {
       throw ApiError.notFound('User not found');
+    }
+
+    const inScope = await this.isUserInScope(currentUser, existing);
+    if (!inScope) {
+      throw new ApiError(403, 'Forbidden: User is outside your management scope');
+    }
+
+    if (currentUser.role === 'REGION_HEAD') {
+      if (['ADMIN', 'REGION_HEAD'].includes(data.role)) {
+        throw new ApiError(403, 'Forbidden: Cannot assign ADMIN or REGION_HEAD role');
+      }
+      if (data.role === 'BRANCH_HEAD') {
+        const branch = await db('branches').where({ branch_id: data.branch_id }).first();
+        if (!branch || branch.region_id !== currentUser.regionId) {
+          throw new ApiError(403, 'Forbidden: Assigned branch is outside your region');
+        }
+      }
+      if (data.role === 'FRANCHISE_HEAD') {
+        const franchise = await db('franchises').where({ franchise_id: data.franchise_id }).first();
+        if (franchise) {
+          const branch = await db('branches').where({ branch_id: franchise.branch_id }).first();
+          if (!branch || branch.region_id !== currentUser.regionId) {
+            throw new ApiError(403, 'Forbidden: Assigned franchise is outside your region');
+          }
+        }
+      }
+    } else if (currentUser.role === 'BRANCH_HEAD') {
+      if (['ADMIN', 'REGION_HEAD', 'BRANCH_HEAD'].includes(data.role)) {
+        throw new ApiError(403, 'Forbidden: Cannot assign ADMIN, REGION_HEAD, or BRANCH_HEAD roles');
+      }
+      if (data.role === 'FRANCHISE_HEAD') {
+        const franchise = await db('franchises').where({ franchise_id: data.franchise_id }).first();
+        if (!franchise || franchise.branch_id !== currentUser.branchId) {
+          throw new ApiError(403, 'Forbidden: Assigned franchise is outside your branch');
+        }
+      }
     }
 
     const updateData: any = {
@@ -328,11 +471,17 @@ export class AuthService {
     return this.authRepository.update(id, updateData);
   }
 
-  async deleteUser(id: number): Promise<void> {
+  async deleteUser(id: number, currentUser: any): Promise<void> {
     const existing = await this.authRepository.findById(id);
     if (!existing) {
       throw ApiError.notFound('User not found');
     }
+
+    const inScope = await this.isUserInScope(currentUser, existing);
+    if (!inScope) {
+      throw new ApiError(403, 'Forbidden: User is outside your management scope');
+    }
+
     await this.authRepository.delete(id);
   }
 }
