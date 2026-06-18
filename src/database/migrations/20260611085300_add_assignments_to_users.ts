@@ -18,9 +18,9 @@ export async function up(knex: Knex): Promise<void> {
 
     // Add columns with matching integer definitions and foreign key constraints
     await knex.schema.alterTable('users', (table) => {
-      table.integer('region_id').nullable().references('region_id').inTable('regions').onDelete('SET NULL');
-      table.integer('branch_id').nullable().references('branch_id').inTable('branches').onDelete('SET NULL');
-      table.integer('franchise_id').nullable().references('franchise_id').inTable('franchises').onDelete('SET NULL');
+      table.integer('region_id').unsigned().nullable().references('region_id').inTable('regions').onDelete('SET NULL');
+      table.integer('branch_id').unsigned().nullable().references('branch_id').inTable('branches').onDelete('SET NULL');
+      table.integer('franchise_id').unsigned().nullable().references('franchise_id').inTable('franchises').onDelete('SET NULL');
     });
   }
 

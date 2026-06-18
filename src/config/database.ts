@@ -37,10 +37,14 @@ export const knexConfig: Knex.Config = {
   },
   migrations: {
     tableName: 'knex_migrations',
-    directory: './src/database/migrations',
+    directory: env.NODE_ENV === 'production'
+      ? './dist/database/migrations'
+      : './src/database/migrations',
   },
   seeds: {
-    directory: './src/database/seeders',
+    directory: env.NODE_ENV === 'production'
+      ? './dist/database/seeders'
+      : './src/database/seeders',
   },
 };
 

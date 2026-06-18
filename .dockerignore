@@ -1,0 +1,33 @@
+# Local dependencies and build outputs
+node_modules/
+dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Git assets
+.git/
+.gitignore
+
+# Environment files and secrets
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.pem
+*.key
+
+# Docker files
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# IDE configs
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
