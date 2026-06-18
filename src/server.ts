@@ -2,15 +2,27 @@ import app from './app';
 import { env } from './config/env';
 import { logger } from './config/logger';
 import db from './config/database';
+import { ensureDatabaseExists, createDefaultAdminUser } from './database/init-db';
 
 const startServer = async () => {
   try {
     logger.info('Initializing application bootstrap...');
 
-    // Test database connection with a standard cross-dialect query
+    // 1. Ensure database exists
+    await ensureDatabaseExists();
+
+    // 2. Test database connection
     logger.info(`Testing connection to database client: ${env.DB_CLIENT}...`);
     await db.raw('SELECT 1');
     logger.info('Database connection verified successfully.');
+
+    // 3. Run database migrations automatically
+    logger.info('Running database migrations...');
+    await db.migrate.latest();
+    logger.info('Database migrations completed successfully.');
+
+    // 4. Create default admin user
+    await createDefaultAdminUser();
 
     // Start Express server
     const server = app.listen(env.PORT, () => {
