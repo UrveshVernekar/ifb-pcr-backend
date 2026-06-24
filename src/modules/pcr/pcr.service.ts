@@ -92,28 +92,266 @@ export class PcrService {
    * Maps Excel column headers to database snake_case fields
    */
   private getDbColumnName(header: string): string | null {
+    const cleanHeader = header.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+
+    // Map normalized alphanumeric headers to database columns
     const mapping: { [key: string]: string } = {
-      'Zone': 'zone',
-      'Branch': 'branch',
-      'Machine Serial': 'machine_serial',
-      'Machine Serial No.': 'machine_serial',
-      'Part Code': 'part_code',
-      'Part Description': 'part_description',
-      'Ticker Number': 'ticker_number',
-      'Ticket Number': 'ticker_number'
+      'zone': 'zone',
+      'branch': 'branch',
+      'machineserial': 'machine_serial',
+      'machineserialno': 'machine_serial',
+      'machineserialnumber': 'machine_serial',
+      'serialno': 'machine_serial',
+      'serialnumber': 'machine_serial',
+      'partcode': 'part_code',
+      'partdescription': 'part_description',
+      'tickernumber': 'ticker_number',
+      'ticketnumber': 'ticker_number',
+      'ticketno': 'ticker_number',
+      'ticket': 'ticker_number',
+      'ticker': 'ticker_number'
     };
 
-    if (mapping[header]) return mapping[header];
-    
-    const trimmed = header.trim();
-    if (mapping[trimmed]) return mapping[trimmed];
-    
-    const lower = trimmed.toLowerCase();
-    for (const key of Object.keys(mapping)) {
-      if (key.trim().toLowerCase() === lower) {
-        return mapping[key];
+    return mapping[cleanHeader] || null;
+  }
+
+  /**
+   * Retrieves PCR claims list joined with CRM details and verification status,
+   * along with verification summary statistics and branch overview metrics.
+   */
+  async getPhysicalVerificationList(
+    month: number,
+    year: number,
+    branchId?: number,
+    search?: string,
+    page: number = 1,
+    limit: number = 10
+  ): Promise<{ parts: any[]; summary: any; branchOverview: any[]; pagination: any }> {
+    try {
+      // 1. Build list count query (for pagination)
+      const countQuery = db('pcr_data as p')
+        .where('p.selected_month', month)
+        .where('p.selected_year', year);
+
+      if (branchId) {
+        countQuery.where('p.selected_branch_id', branchId);
       }
+
+      if (search) {
+        const term = `%${search.trim()}%`;
+        countQuery.where((builder) => {
+          builder.where('p.ticker_number', 'like', term)
+            .orWhere('p.part_code', 'like', term)
+            .orWhere('p.part_description', 'like', term);
+        });
+      }
+
+      const totalPartsCountRes = await countQuery.count('p.id as total');
+      const totalCount = parseInt(String(totalPartsCountRes[0]?.total || '0'), 10);
+
+
+      // 2. Build list data query with offset limit
+      const query = db('pcr_data as p')
+        .leftJoin('crm_data as c', function () {
+          this.on('p.ticker_number', '=', 'c.ticket')
+            .andOn('p.part_code', '=', 'c.item_code')
+            .andOn('p.selected_month', '=', 'c.month')
+            .andOn('p.selected_year', '=', 'c.year');
+        })
+        .leftJoin('branches as b', 'p.selected_branch_id', 'b.branch_id')
+        .leftJoin('pcr_physical_verifications as pv', function () {
+          this.on('p.ticker_number', '=', 'pv.ticket_id')
+            .andOn('p.part_code', '=', 'pv.part_code');
+        })
+        .leftJoin('users as u', 'pv.verified_by', 'u.user_id')
+        .select(
+          'p.id as pcr_data_id',
+          'p.ticker_number as ticket_id',
+          'p.part_code',
+          'p.part_description',
+          'p.selected_month',
+          'p.selected_year',
+          'p.selected_branch_id',
+          'b.name as branch_name',
+          'c.customer_name',
+          'c.warranty_status',
+          db.raw('COALESCE(c.approved_qty, 1) as expected_qty'),
+          db.raw('COALESCE(pv.status, \'Pending\') as verification_status'),
+          'pv.remarks',
+          db.raw('COALESCE(pv.condition, \'-\') as part_condition'),
+          'pv.verified_at',
+          'u.full_name as verified_by_name'
+        );
+
+      // Filters
+      query.where('p.selected_month', month);
+      query.where('p.selected_year', year);
+
+      if (branchId) {
+        query.where('p.selected_branch_id', branchId);
+      }
+
+      if (search) {
+        const term = `%${search.trim()}%`;
+        query.where((builder) => {
+          builder.where('p.ticker_number', 'like', term)
+            .orWhere('p.part_code', 'like', term)
+            .orWhere('p.part_description', 'like', term);
+        });
+      }
+
+      query.orderBy('p.ticker_number', 'asc');
+      
+      const offset = (page - 1) * limit;
+      query.limit(limit).offset(offset);
+
+      const parts = await query;
+
+      // 3. Fetch summary counts matching current filters (unpaginated total counts)
+      const statsQuery = db('pcr_data as p')
+        .leftJoin('pcr_physical_verifications as pv', function () {
+          this.on('p.ticker_number', '=', 'pv.ticket_id')
+            .andOn('p.part_code', '=', 'pv.part_code');
+        })
+        .where('p.selected_month', month)
+        .where('p.selected_year', year);
+
+      if (branchId) {
+        statsQuery.where('p.selected_branch_id', branchId);
+      }
+
+      if (search) {
+        const term = `%${search.trim()}%`;
+        statsQuery.where((builder) => {
+          builder.where('p.ticker_number', 'like', term)
+            .orWhere('p.part_code', 'like', term)
+            .orWhere('p.part_description', 'like', term);
+        });
+      }
+
+      const stats = await statsQuery
+        .select(
+          db.raw('count(p.id) as total_pcr'),
+          db.raw('sum(case when pv.status = \'Received\' then 1 else 0 end) as received_count'),
+          db.raw('sum(case when pv.status = \'Not Received\' then 1 else 0 end) as not_received_count'),
+          db.raw('sum(case when pv.status is null or pv.status = \'Pending\' then 1 else 0 end) as pending_count'),
+          db.raw('sum(case when pv.condition = \'Damaged\' and pv.status = \'Received\' then 1 else 0 end) as damaged_count')
+        )
+        .first();
+
+      const summary = {
+        total: parseInt(stats?.total_pcr || '0', 10),
+        received: parseInt(stats?.received_count || '0', 10),
+        notReceived: parseInt(stats?.not_received_count || '0', 10),
+        pending: parseInt(stats?.pending_count || '0', 10),
+        damaged: parseInt(stats?.damaged_count || '0', 10),
+      };
+
+      // 4. Fetch branch damage overview list for selected month/year
+      const branchOverviewQuery = db('pcr_data as p')
+        .join('branches as b', 'p.selected_branch_id', 'b.branch_id')
+        .leftJoin('pcr_physical_verifications as pv', function () {
+          this.on('p.ticker_number', '=', 'pv.ticket_id')
+            .andOn('p.part_code', '=', 'pv.part_code');
+        })
+        .where('p.selected_month', month)
+        .where('p.selected_year', year)
+        .groupBy('p.selected_branch_id', 'b.name')
+        .select(
+          'p.selected_branch_id as branch_id',
+          'b.name as branch_name',
+          db.raw('count(p.id) as total_count'),
+          db.raw('sum(case when pv.condition = \'Damaged\' and pv.status = \'Received\' then 1 else 0 end) as damaged_count')
+        );
+
+      const rawOverview = await branchOverviewQuery;
+      const branchOverview = rawOverview.map((item: any) => {
+        const total = parseInt(item.total_count || '0', 10);
+        const damaged = parseInt(item.damaged_count || '0', 10);
+        const damagePercentage = total > 0 ? parseFloat(((damaged / total) * 100).toFixed(2)) : 0;
+        return {
+          branchId: item.branch_id,
+          branchName: item.branch_name,
+          totalCount: total,
+          damagedCount: damaged,
+          damagePercentage
+        };
+      });
+
+      const totalPages = Math.ceil(totalCount / limit);
+      const pagination = {
+        page,
+        limit,
+        totalCount,
+        totalPages
+      };
+
+      return { parts, summary, branchOverview, pagination };
+    } catch (error: any) {
+      logger.error(`Error in getPhysicalVerificationList: ${error.message}`);
+      throw new ApiError(500, `Failed to retrieve physical verification details: ${error.message}`);
     }
-    return null;
+  }
+
+  /**
+   * Idempotent status update / insert operation (upsert) for physical verification.
+   */
+  async savePhysicalVerification(
+    ticketId: string,
+    partCode: string,
+    status: string,
+    condition: string = 'OK',
+    remarks: string | null = null,
+    userId?: number
+  ): Promise<any> {
+    if (!ticketId || !partCode) {
+      throw new ApiError(400, 'Ticket ID and Part Code are required');
+    }
+
+    if (!['Pending', 'Received', 'Not Received'].includes(status)) {
+      throw new ApiError(400, 'Invalid status value. Must be Pending, Received, or Not Received');
+    }
+
+    if (!['OK', 'Damaged', '-'].includes(condition)) {
+      throw new ApiError(400, 'Invalid condition value. Must be OK, Damaged, or -');
+    }
+
+    try {
+      const existing = await db('pcr_physical_verifications')
+        .where({ ticket_id: ticketId, part_code: partCode })
+        .first();
+
+      if (existing) {
+        await db('pcr_physical_verifications')
+          .where({ ticket_id: ticketId, part_code: partCode })
+          .update({
+            status,
+            condition,
+            remarks: remarks || null,
+            verified_by: userId || null,
+            verified_at: db.fn.now(),
+            updated_at: db.fn.now()
+          });
+      } else {
+        await db('pcr_physical_verifications')
+          .insert({
+            ticket_id: ticketId,
+            part_code: partCode,
+            status,
+            condition,
+            remarks: remarks || null,
+            verified_by: userId || null,
+            verified_at: db.fn.now(),
+            created_at: db.fn.now(),
+            updated_at: db.fn.now()
+          });
+      }
+
+      return { ticketId, partCode, status, condition, remarks };
+    } catch (error: any) {
+      logger.error(`Error in savePhysicalVerification: ${error.message}`);
+      throw new ApiError(500, `Failed to save physical verification: ${error.message}`);
+    }
   }
 }
+

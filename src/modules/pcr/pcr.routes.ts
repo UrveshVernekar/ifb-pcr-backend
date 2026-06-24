@@ -23,4 +23,18 @@ router.post(
   controller.uploadPCRData
 );
 
+// Physical verification endpoints
+router.get(
+  '/physical-verification',
+  authenticate,
+  controller.getPhysicalVerificationList
+);
+
+router.post(
+  '/physical-verification',
+  authenticate,
+  controller.savePhysicalVerification
+);
+
 export default router;
+
