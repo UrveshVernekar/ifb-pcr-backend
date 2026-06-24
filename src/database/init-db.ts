@@ -142,26 +142,57 @@ export async function createDefaultAdminUser() {
 
   // Ensure default admin user is seeded
   const existingUser = await db('users').where({ email: adminEmail }).first();
-  if (existingUser) {
+  if (!existingUser) {
+    logger.info('Creating default admin user...');
+    const salt = await bcrypt.genSalt(10);
+    const passwordHash = await bcrypt.hash(rawPassword, salt);
+
+    const adminUser = {
+      employee_code: employeeCode,
+      full_name: fullName,
+      email: adminEmail,
+      password_hash: passwordHash,
+      role_id: adminRole.role_id,
+      is_active: 1,
+      created_at: db.fn.now(),
+      updated_at: db.fn.now()
+    };
+
+    await db('users').insert(adminUser);
+    logger.info(`Default admin user "${adminEmail}" created successfully.`);
+  } else {
     logger.info('Default admin user already exists.');
-    return;
   }
 
-  logger.info('Creating default admin user...');
-  const salt = await bcrypt.genSalt(10);
-  const passwordHash = await bcrypt.hash(rawPassword, salt);
-
-  const adminUser = {
-    employee_code: employeeCode,
-    full_name: fullName,
-    email: adminEmail,
-    password_hash: passwordHash,
-    role_id: adminRole.role_id,
-    is_active: 1,
-    created_at: db.fn.now(),
-    updated_at: db.fn.now()
-  };
-
-  await db('users').insert(adminUser);
-  logger.info(`Default admin user "${adminEmail}" created successfully.`);
+  // Verify crm_data and pcr_data tables exist
+  await verifyCrmTableExists();
+  await verifyPcrTableExists();
 }
+
+async function verifyCrmTableExists() {
+  try {
+    const hasCrmTable = await db.schema.hasTable('crm_data');
+    if (hasCrmTable) {
+      logger.info('Database verification: crm_data table is verified and ready.');
+    } else {
+      logger.warn('Database verification warning: crm_data table is missing.');
+    }
+  } catch (error: any) {
+    logger.error(`Database verification failed for crm_data table: ${error.message}`);
+  }
+}
+
+async function verifyPcrTableExists() {
+  try {
+    const hasPcrTable = await db.schema.hasTable('pcr_data');
+    if (hasPcrTable) {
+      logger.info('Database verification: pcr_data table is verified and ready.');
+    } else {
+      logger.warn('Database verification warning: pcr_data table is missing.');
+    }
+  } catch (error: any) {
+    logger.error(`Database verification failed for pcr_data table: ${error.message}`);
+  }
+}
+
+
