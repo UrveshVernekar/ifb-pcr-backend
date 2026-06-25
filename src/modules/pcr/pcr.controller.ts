@@ -60,6 +60,8 @@ export class PcrController {
       const yearVal = req.query.year;
       const branchIdVal = req.query.branchId;
       const search = req.query.search ? String(req.query.search) : undefined;
+      const ticketNumber = req.query.ticketNumber ? String(req.query.ticketNumber) : undefined;
+      const partCode = req.query.partCode ? String(req.query.partCode) : undefined;
       const pageVal = req.query.page;
       const limitVal = req.query.limit;
 
@@ -94,7 +96,16 @@ export class PcrController {
         throw new ApiError(400, 'Limit must be a positive integer');
       }
 
-      const result = await this.pcrService.getPhysicalVerificationList(month, year, branchId, search, page, limit);
+      const result = await this.pcrService.getPhysicalVerificationList(
+        month, 
+        year, 
+        branchId, 
+        search, 
+        page, 
+        limit, 
+        ticketNumber, 
+        partCode
+      );
 
       return successResponse(res, 'Physical verification list retrieved successfully', result);
     } catch (error) {

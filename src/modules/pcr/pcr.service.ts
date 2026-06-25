@@ -125,7 +125,9 @@ export class PcrService {
     branchId?: number,
     search?: string,
     page: number = 1,
-    limit: number = 10
+    limit: number = 10,
+    ticketNumber?: string,
+    partCode?: string
   ): Promise<{ parts: any[]; summary: any; branchOverview: any[]; pagination: any }> {
     try {
       // 1. Build list count query (for pagination)
@@ -144,6 +146,14 @@ export class PcrService {
             .orWhere('p.part_code', 'like', term)
             .orWhere('p.part_description', 'like', term);
         });
+      }
+
+      if (ticketNumber) {
+        countQuery.where('p.ticker_number', 'like', `%${ticketNumber.trim()}%`);
+      }
+
+      if (partCode) {
+        countQuery.where('p.part_code', 'like', `%${partCode.trim()}%`);
       }
 
       const totalPartsCountRes = await countQuery.count('p.id as total');
@@ -200,6 +210,14 @@ export class PcrService {
         });
       }
 
+      if (ticketNumber) {
+        query.where('p.ticker_number', 'like', `%${ticketNumber.trim()}%`);
+      }
+
+      if (partCode) {
+        query.where('p.part_code', 'like', `%${partCode.trim()}%`);
+      }
+
       query.orderBy('p.ticker_number', 'asc');
       
       const offset = (page - 1) * limit;
@@ -227,6 +245,14 @@ export class PcrService {
             .orWhere('p.part_code', 'like', term)
             .orWhere('p.part_description', 'like', term);
         });
+      }
+
+      if (ticketNumber) {
+        statsQuery.where('p.ticker_number', 'like', `%${ticketNumber.trim()}%`);
+      }
+
+      if (partCode) {
+        statsQuery.where('p.part_code', 'like', `%${partCode.trim()}%`);
       }
 
       const stats = await statsQuery
