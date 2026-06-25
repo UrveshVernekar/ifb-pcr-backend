@@ -8,12 +8,13 @@ export async function up(knex: Knex): Promise<void> {
 
   await knex.schema.createTable('pcr_data', (table) => {
     table.bigIncrements('id').primary();
-    
+
     // Selected Upload Metadata
-    table.integer('selected_branch_id').notNullable();
+    // table.integer('selected_branch_id').notNullable();
+    table.integer('selected_branch_id').unsigned().notNullable();
     table.integer('selected_month').notNullable();
     table.integer('selected_year').notNullable();
-    
+
     // Corrected 6 Columns from Excel file layout
     table.string('zone', 100).nullable();
     table.string('branch', 255).nullable();
