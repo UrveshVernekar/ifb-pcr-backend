@@ -127,7 +127,9 @@ export class PcrService {
     page: number = 1,
     limit: number = 10,
     ticketNumber?: string,
-    partCode?: string
+    partCode?: string,
+    regionId?: number,
+    franchiseId?: number
   ): Promise<{ parts: any[]; summary: any; branchOverview: any[]; pagination: any }> {
     try {
       // 1. Build list count query (for pagination)
@@ -137,6 +139,20 @@ export class PcrService {
 
       if (branchId) {
         countQuery.where('p.selected_branch_id', branchId);
+      } else if (regionId) {
+        countQuery.join('branches as b', 'p.selected_branch_id', 'b.branch_id')
+          .where('b.region_id', regionId);
+      }
+
+      if (franchiseId) {
+        countQuery.join('crm_data as c', function () {
+          this.on('p.ticker_number', '=', 'c.ticket')
+            .andOn('p.part_code', '=', 'c.item_code')
+            .andOn('p.selected_month', '=', 'c.month')
+            .andOn('p.selected_year', '=', 'c.year');
+        })
+        .join('franchises as f', 'c.fr_code', 'f.code')
+        .where('f.franchise_id', franchiseId);
       }
 
       if (search) {
@@ -199,6 +215,13 @@ export class PcrService {
 
       if (branchId) {
         query.where('p.selected_branch_id', branchId);
+      } else if (regionId) {
+        query.where('b.region_id', regionId);
+      }
+
+      if (franchiseId) {
+        query.leftJoin('franchises as f', 'c.fr_code', 'f.code')
+          .where('f.franchise_id', franchiseId);
       }
 
       if (search) {
@@ -236,6 +259,20 @@ export class PcrService {
 
       if (branchId) {
         statsQuery.where('p.selected_branch_id', branchId);
+      } else if (regionId) {
+        statsQuery.join('branches as b', 'p.selected_branch_id', 'b.branch_id')
+          .where('b.region_id', regionId);
+      }
+
+      if (franchiseId) {
+        statsQuery.join('crm_data as c', function () {
+          this.on('p.ticker_number', '=', 'c.ticket')
+            .andOn('p.part_code', '=', 'c.item_code')
+            .andOn('p.selected_month', '=', 'c.month')
+            .andOn('p.selected_year', '=', 'c.year');
+        })
+        .join('franchises as f', 'c.fr_code', 'f.code')
+        .where('f.franchise_id', franchiseId);
       }
 
       if (search) {
@@ -281,8 +318,26 @@ export class PcrService {
             .andOn('p.part_code', '=', 'pv.part_code');
         })
         .where('p.selected_month', month)
-        .where('p.selected_year', year)
-        .groupBy('p.selected_branch_id', 'b.name')
+        .where('p.selected_year', year);
+
+      if (branchId) {
+        branchOverviewQuery.where('p.selected_branch_id', branchId);
+      } else if (regionId) {
+        branchOverviewQuery.where('b.region_id', regionId);
+      }
+
+      if (franchiseId) {
+        branchOverviewQuery.join('crm_data as c', function () {
+          this.on('p.ticker_number', '=', 'c.ticket')
+            .andOn('p.part_code', '=', 'c.item_code')
+            .andOn('p.selected_month', '=', 'c.month')
+            .andOn('p.selected_year', '=', 'c.year');
+        })
+        .join('franchises as f', 'c.fr_code', 'f.code')
+        .where('f.franchise_id', franchiseId);
+      }
+
+      branchOverviewQuery.groupBy('p.selected_branch_id', 'b.name')
         .select(
           'p.selected_branch_id as branch_id',
           'b.name as branch_name',
