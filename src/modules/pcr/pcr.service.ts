@@ -129,11 +129,17 @@ export class PcrService {
     ticketNumber?: string,
     partCode?: string,
     regionId?: number,
-    franchiseId?: number
+    franchiseId?: number,
+    verificationStatus?: string,
+    partCondition?: string
   ): Promise<{ parts: any[]; summary: any; branchOverview: any[]; pagination: any }> {
     try {
       // 1. Build list count query (for pagination)
       const countQuery = db('pcr_data as p')
+        .leftJoin('pcr_physical_verifications as pv', function () {
+          this.on('p.ticker_number', '=', 'pv.ticket_id')
+            .andOn('p.part_code', '=', 'pv.part_code');
+        })
         .where('p.selected_month', month)
         .where('p.selected_year', year);
 
@@ -170,6 +176,24 @@ export class PcrService {
 
       if (partCode) {
         countQuery.where('p.part_code', 'like', `%${partCode.trim()}%`);
+      }
+
+      if (verificationStatus) {
+        if (verificationStatus === 'Pending') {
+          countQuery.where((builder) => {
+            builder.whereNull('pv.status').orWhere('pv.status', 'Pending');
+          });
+        } else {
+          countQuery.where('pv.status', verificationStatus);
+        }
+      }
+
+      if (partCondition) {
+        if (partCondition === 'Damaged') {
+          countQuery.where('pv.condition', 'Damaged').where('pv.status', 'Received');
+        } else {
+          countQuery.where('pv.condition', partCondition);
+        }
       }
 
       const totalPartsCountRes = await countQuery.count('p.id as total');
@@ -239,6 +263,24 @@ export class PcrService {
 
       if (partCode) {
         query.where('p.part_code', 'like', `%${partCode.trim()}%`);
+      }
+
+      if (verificationStatus) {
+        if (verificationStatus === 'Pending') {
+          query.where((builder) => {
+            builder.whereNull('pv.status').orWhere('pv.status', 'Pending');
+          });
+        } else {
+          query.where('pv.status', verificationStatus);
+        }
+      }
+
+      if (partCondition) {
+        if (partCondition === 'Damaged') {
+          query.where('pv.condition', 'Damaged').where('pv.status', 'Received');
+        } else {
+          query.where('pv.condition', partCondition);
+        }
       }
 
       query.orderBy('p.ticker_number', 'asc');
@@ -536,6 +578,122 @@ export class PcrService {
     } catch (error: any) {
       logger.error(`Error in getUploadStatus: ${error.message}`);
       throw new ApiError(500, `Failed to retrieve upload status: ${error.message}`);
+    }
+  }
+
+  /**
+   * Queries and generates an Excel spreadsheet buffer of claims matching export filters.
+   */
+  async exportPhysicalVerification(options: {
+    type: string;
+    month?: number;
+    year?: number;
+    date?: string;
+    startDate?: string;
+    endDate?: string;
+    branchId?: number;
+    regionId?: number;
+  }): Promise<Buffer> {
+    try {
+      const { type, month, year, date, startDate, endDate, branchId, regionId } = options;
+
+      const query = db('pcr_data as p')
+        .leftJoin('crm_data as c', function () {
+          this.on('p.ticker_number', '=', 'c.ticket')
+            .andOn('p.part_code', '=', 'c.item_code')
+            .andOn('p.selected_month', '=', 'c.month')
+            .andOn('p.selected_year', '=', 'c.year');
+        })
+        .leftJoin('branches as b', 'p.selected_branch_id', 'b.branch_id')
+        .leftJoin('pcr_physical_verifications as pv', function () {
+          this.on('p.ticker_number', '=', 'pv.ticket_id')
+            .andOn('p.part_code', '=', 'pv.part_code');
+        })
+        .leftJoin('users as u', 'pv.verified_by', 'u.user_id')
+        .select(
+          'p.ticker_number as ticket_id',
+          'p.part_code',
+          'p.part_description',
+          'b.name as branch_name',
+          db.raw('COALESCE(c.approved_qty, 1) as expected_qty'),
+          db.raw('COALESCE(pv.status, \'Pending\') as verification_status'),
+          db.raw('COALESCE(pv.condition, \'-\') as part_condition'),
+          'pv.remarks',
+          'u.full_name as verified_by_name',
+          'pv.verified_at'
+        );
+
+      // Branch/Region Filters
+      if (branchId) {
+        query.where('p.selected_branch_id', branchId);
+      } else if (regionId) {
+        query.where('b.region_id', regionId);
+      }
+
+      // Temporal filters
+      if (type === 'month' && month && year) {
+        query.where('p.selected_month', month).where('p.selected_year', year);
+      } else if (type === 'year' && year) {
+        query.where('p.selected_year', year);
+      } else if (type === 'day' && date) {
+        query.whereBetween('pv.verified_at', [`${date} 00:00:00`, `${date} 23:59:59`]);
+      } else if (type === 'range' && startDate && endDate) {
+        query.whereBetween('pv.verified_at', [`${startDate} 00:00:00`, `${endDate} 23:59:59`]);
+      } else {
+        if (month && year) {
+          query.where('p.selected_month', month).where('p.selected_year', year);
+        }
+      }
+
+      query.orderBy('p.ticker_number', 'asc');
+
+      const records = await query;
+
+      // Format records for Excel rows
+      const formatted = records.map((r: any, idx: number) => ({
+        'S.No.': idx + 1,
+        'Ticket ID': r.ticket_id,
+        'Part Code': r.part_code,
+        'Part Description': r.part_description,
+        'Branch': r.branch_name || '-',
+        'Expected Qty': r.expected_qty,
+        'Verification Status': r.verification_status,
+        'Part Condition': r.part_condition,
+        'Remarks': r.remarks || '-',
+        'Verified By': r.verified_by_name || '-',
+        'Verified At': r.verified_at ? new Date(r.verified_at).toLocaleString('en-IN') : '-'
+      }));
+
+      // Generate workbook
+      const worksheet = XLSX.utils.json_to_sheet(formatted);
+      const workbook = XLSX.utils.book_new();
+
+      // Auto-fit column widths
+      const maxLens = Object.keys(formatted[0] || {}).reduce((acc: any, key) => {
+        acc[key] = key.length;
+        return acc;
+      }, {});
+
+      formatted.forEach((row: any) => {
+        Object.keys(row).forEach((key) => {
+          const valStr = String(row[key] || '');
+          if (valStr.length > maxLens[key]) {
+            maxLens[key] = valStr.length;
+          }
+        });
+      });
+
+      worksheet['!cols'] = Object.keys(maxLens).map((key) => ({
+        wch: Math.min(Math.max(maxLens[key] + 3, 10), 40)
+      }));
+
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Claims Verification');
+      
+      const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+      return buffer;
+    } catch (error: any) {
+      logger.error(`Error in exportPhysicalVerification: ${error.message}`);
+      throw new ApiError(500, `Failed to export claims data: ${error.message}`);
     }
   }
 }
