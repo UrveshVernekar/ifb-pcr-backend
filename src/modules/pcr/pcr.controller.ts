@@ -155,6 +155,15 @@ export class PcrController {
       return next(error);
     }
   };
+
+  getUploadStatus = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const result = await this.pcrService.getUploadStatus();
+      return successResponse(res, 'Upload status retrieved successfully', result);
+    } catch (error) {
+      return next(error);
+    }
+  };
 }
 
 export default PcrController;

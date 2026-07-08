@@ -434,5 +434,108 @@ export class PcrService {
       throw new ApiError(500, `Failed to save physical verification: ${error.message}`);
     }
   }
+
+  /**
+   * Retrieves aggregated monthly upload status details for both CRM and PCR claims.
+   */
+  async getUploadStatus(): Promise<any[]> {
+    try {
+      // 1. Fetch active branches
+      const branches = await db('branches')
+        .whereNull('deleted_at')
+        .where('is_active', true)
+        .select('branch_id', 'name')
+        .orderBy('name', 'asc');
+
+      // 2. Fetch CRM uploads summary
+      const crmUploads = await db('crm_data')
+        .select('month', 'year')
+        .count('* as count')
+        .max('created_at as last_uploaded')
+        .groupBy('month', 'year');
+
+      // 3. Fetch PCR uploads summary
+      const pcrUploads = await db('pcr_data')
+        .select('selected_month as month', 'selected_year as year', 'selected_branch_id as branch_id')
+        .count('* as count')
+        .max('created_at as last_uploaded')
+        .groupBy('selected_month', 'selected_year', 'selected_branch_id');
+
+      // 4. Extract all unique year-month combinations
+      const monthYearSet = new Set<string>();
+      
+      crmUploads.forEach((c: any) => {
+        monthYearSet.add(`${c.year}-${c.month}`);
+      });
+      pcrUploads.forEach((p: any) => {
+        monthYearSet.add(`${p.year}-${p.month}`);
+      });
+
+      const uniquePeriods = Array.from(monthYearSet).map(s => {
+        const [year, month] = s.split('-').map(Number);
+        return { year, month };
+      });
+
+      // Sort chronological ascending (oldest to newest)
+      uniquePeriods.sort((a, b) => {
+        if (a.year !== b.year) return a.year - b.year;
+        return a.month - b.month;
+      });
+
+      // 5. Construct monthly structure
+      const slides = uniquePeriods.map((period) => {
+        const { year, month } = period;
+
+        // CRM data for this month
+        const crmMatch = crmUploads.find((c: any) => c.month === month && c.year === year);
+        const crmStatus = {
+          uploaded: !!crmMatch,
+          recordCount: crmMatch ? parseInt(crmMatch.count || '0', 10) : 0,
+          uploadedAt: crmMatch ? crmMatch.last_uploaded : null
+        };
+
+        // PCR details per branch
+        const branchesDetail = branches.map((b: any) => {
+          const pcrMatch = pcrUploads.find((p: any) => p.month === month && p.year === year && p.branch_id === b.branch_id);
+          return {
+            branchId: b.branch_id,
+            branchName: b.name,
+            uploaded: !!pcrMatch,
+            recordCount: pcrMatch ? parseInt(pcrMatch.count || '0', 10) : 0,
+            uploadedAt: pcrMatch ? pcrMatch.last_uploaded : null
+          };
+        });
+
+        const uploadedBranchesCount = branchesDetail.filter(b => b.uploaded).length;
+        const pcrRecordCount = branchesDetail.reduce((acc, curr) => acc + curr.recordCount, 0);
+        const pcrLastUploaded = branchesDetail.reduce((latest: any, curr) => {
+          if (!curr.uploadedAt) return latest;
+          if (!latest) return curr.uploadedAt;
+          return new Date(curr.uploadedAt) > new Date(latest) ? curr.uploadedAt : latest;
+        }, null);
+
+        const pcrStatus = {
+          uploaded: uploadedBranchesCount > 0,
+          uploadedBranchesCount,
+          totalBranches: branches.length,
+          recordCount: pcrRecordCount,
+          uploadedAt: pcrLastUploaded,
+          branchesDetail
+        };
+
+        return {
+          month,
+          year,
+          crm: crmStatus,
+          pcr: pcrStatus
+        };
+      });
+
+      return slides;
+    } catch (error: any) {
+      logger.error(`Error in getUploadStatus: ${error.message}`);
+      throw new ApiError(500, `Failed to retrieve upload status: ${error.message}`);
+    }
+  }
 }
 
