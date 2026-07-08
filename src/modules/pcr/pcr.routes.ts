@@ -42,5 +42,11 @@ router.post(
   controller.savePhysicalVerification
 );
 
+router.get(
+  '/export',
+  authenticate,
+  controller.exportPhysicalVerification
+);
+
 export default router;
 

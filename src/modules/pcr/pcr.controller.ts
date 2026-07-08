@@ -66,6 +66,8 @@ export class PcrController {
       const partCode = req.query.partCode ? String(req.query.partCode) : undefined;
       const pageVal = req.query.page;
       const limitVal = req.query.limit;
+      const verificationStatusVal = req.query.verificationStatus;
+      const partConditionVal = req.query.partCondition;
 
       // Default to current month and year if not provided
       const currentDate = new Date();
@@ -83,6 +85,13 @@ export class PcrController {
 
       const page = pageVal ? parseInt(pageVal as string, 10) : 1;
       const limit = limitVal ? parseInt(limitVal as string, 10) : 10;
+      
+      const verificationStatus = (verificationStatusVal && typeof verificationStatusVal === 'string')
+        ? verificationStatusVal
+        : undefined;
+      const partCondition = (partConditionVal && typeof partConditionVal === 'string')
+        ? partConditionVal
+        : undefined;
 
       if (isNaN(month) || month < 1 || month > 12) {
         throw new ApiError(400, 'Month must be a valid number between 1 and 12');
@@ -122,7 +131,9 @@ export class PcrController {
         ticketNumber, 
         partCode,
         regionId,
-        franchiseId
+        franchiseId,
+        verificationStatus,
+        partCondition
       );
 
       return successResponse(res, 'Physical verification list retrieved successfully', result);
@@ -164,7 +175,49 @@ export class PcrController {
       return next(error);
     }
   };
+
+  exportPhysicalVerification = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const type = req.query.type ? String(req.query.type) : 'month';
+      const monthVal = req.query.month;
+      const yearVal = req.query.year;
+      const dateVal = req.query.date;
+      const startDateVal = req.query.startDate;
+      const endDateVal = req.query.endDate;
+      const branchIdVal = req.query.branchId;
+      const regionIdVal = req.query.regionId;
+
+      const month = monthVal ? parseInt(monthVal as string, 10) : undefined;
+      const year = yearVal ? parseInt(yearVal as string, 10) : undefined;
+      const branchId = (branchIdVal && branchIdVal !== 'all' && branchIdVal !== '') 
+        ? parseInt(branchIdVal as string, 10) 
+        : undefined;
+      const regionId = (regionIdVal && regionIdVal !== 'all' && regionIdVal !== '')
+        ? parseInt(regionIdVal as string, 10)
+        : undefined;
+
+      const date = dateVal ? String(dateVal) : undefined;
+      const startDate = startDateVal ? String(startDateVal) : undefined;
+      const endDate = endDateVal ? String(endDateVal) : undefined;
+
+      const buffer = await this.pcrService.exportPhysicalVerification({
+        type,
+        month,
+        year,
+        date,
+        startDate,
+        endDate,
+        branchId,
+        regionId
+      });
+
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename=physical_verification_export_${type}.xlsx`);
+      res.send(buffer);
+    } catch (error) {
+      return next(error);
+    }
+  };
 }
 
 export default PcrController;
-
