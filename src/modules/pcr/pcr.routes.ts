@@ -25,6 +25,12 @@ router.post(
 
 // Physical verification endpoints
 router.get(
+  '/upload-status',
+  authenticate,
+  controller.getUploadStatus
+);
+
+router.get(
   '/physical-verification',
   authenticate,
   controller.getPhysicalVerificationList
