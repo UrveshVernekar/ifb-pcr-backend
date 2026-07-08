@@ -444,7 +444,7 @@ export class PcrService {
       const branches = await db('branches')
         .whereNull('deleted_at')
         .where('is_active', true)
-        .select('branch_id', 'name')
+        .select('branch_id', 'name', 'region_id')
         .orderBy('name', 'asc');
 
       // 2. Fetch CRM uploads summary
@@ -500,6 +500,7 @@ export class PcrService {
           return {
             branchId: b.branch_id,
             branchName: b.name,
+            regionId: b.region_id,
             uploaded: !!pcrMatch,
             recordCount: pcrMatch ? parseInt(pcrMatch.count || '0', 10) : 0,
             uploadedAt: pcrMatch ? pcrMatch.last_uploaded : null
