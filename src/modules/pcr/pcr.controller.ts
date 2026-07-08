@@ -59,6 +59,8 @@ export class PcrController {
       const monthVal = req.query.month;
       const yearVal = req.query.year;
       const branchIdVal = req.query.branchId;
+      const regionIdVal = req.query.regionId;
+      const franchiseIdVal = req.query.franchiseId;
       const search = req.query.search ? String(req.query.search) : undefined;
       const ticketNumber = req.query.ticketNumber ? String(req.query.ticketNumber) : undefined;
       const partCode = req.query.partCode ? String(req.query.partCode) : undefined;
@@ -71,6 +73,12 @@ export class PcrController {
       const year = yearVal ? parseInt(yearVal as string, 10) : currentDate.getFullYear();
       const branchId = (branchIdVal && branchIdVal !== 'all' && branchIdVal !== '') 
         ? parseInt(branchIdVal as string, 10) 
+        : undefined;
+      const regionId = (regionIdVal && regionIdVal !== 'all' && regionIdVal !== '')
+        ? parseInt(regionIdVal as string, 10)
+        : undefined;
+      const franchiseId = (franchiseIdVal && franchiseIdVal !== 'all' && franchiseIdVal !== '')
+        ? parseInt(franchiseIdVal as string, 10)
         : undefined;
 
       const page = pageVal ? parseInt(pageVal as string, 10) : 1;
@@ -86,6 +94,14 @@ export class PcrController {
 
       if (branchId !== undefined && isNaN(branchId)) {
         throw new ApiError(400, 'Branch ID must be a valid number');
+      }
+
+      if (regionId !== undefined && isNaN(regionId)) {
+        throw new ApiError(400, 'Region ID must be a valid number');
+      }
+
+      if (franchiseId !== undefined && isNaN(franchiseId)) {
+        throw new ApiError(400, 'Franchise ID must be a valid number');
       }
 
       if (isNaN(page) || page < 1) {
@@ -104,7 +120,9 @@ export class PcrController {
         page, 
         limit, 
         ticketNumber, 
-        partCode
+        partCode,
+        regionId,
+        franchiseId
       );
 
       return successResponse(res, 'Physical verification list retrieved successfully', result);
